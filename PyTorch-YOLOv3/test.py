@@ -1,5 +1,5 @@
 from __future__ import division
-
+import wandb
 from models import *
 from utils.utils import *
 from utils.datasets import *
@@ -21,6 +21,11 @@ import torch.optim as optim
 
 
 def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size):
+    class_id_to_label = {
+    0: "helmet",
+    1: "mask",
+    2: "mask"
+    }
     model.eval()
 
     # Get dataloader
@@ -33,6 +38,8 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
 
     labels = []
     sample_metrics = []  # List of tuples (TP, confs, pred)
+    log_imgs=[]
+
     for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
 
         # Extract labels
@@ -42,12 +49,36 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
         targets[:, 2:] *= img_size
 
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
-
+        '''
+        NEEDS WORK => Bounding boxes not being logged:
+        '''
         with torch.no_grad():
             outputs = model(imgs)
             outputs = non_max_suppression(outputs, conf_thres=conf_thres, nms_thres=nms_thres)
+            # Output shape => X*X*7
+        
+        for i,batch_detection in enumerate(outputs):
+            bbox_data = []
+            if batch_detection is not None:
+                bbox_data = [{
+                            "position": {
+                                "minX": float(img[0]),
+                                "maxX": float(img[2]),
+                                "minY": float(img[1]),
+                                "maxY": float(img[3]),
+                            },
+                            "class_id" : int(img[6]),
+                            "scores" : {
+                                "Object_conf": float(img[4]),
+                                "class_score": float(img[5])
+                            },
+                        } for img in batch_detection.cpu().numpy()] 
+            log_imgs.append(wandb.Image(imgs[i].permute(1, 2, 0).cpu().numpy(), boxes={"predictions": {"box_data":bbox_data , "class_labels": class_id_to_label}}))        
 
         sample_metrics += get_batch_statistics(outputs, targets, iou_threshold=iou_thres)
+       
+    wandb.log({"Outputs": log_imgs})
+
 
     # Concatenate sample statistics
     true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
