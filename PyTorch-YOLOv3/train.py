@@ -27,32 +27,42 @@ IGNORE WARNINGS
 '''
 import warnings
 warnings.filterwarnings("ignore")
-'''
-Create Artifacts and setup logging
-'''
-run = artifact_utils.init_new_run('demo_model')
-artifact_utils.create_dataset_artifact('data/custom/images','demo-dataset',run)
+
 model_ckpt_name = ''
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
-    parser.add_argument("--model_def", type=str, default="config/yolov3-tiny.cfg", help="path to model definition file")
+    parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
     parser.add_argument("--data_config", type=str, default="config/custom.data", help="path to data config file")
     parser.add_argument("--pretrained_weights", type=str, help="if specified starts from checkpoint model")
     parser.add_argument("--n_cpu", type=int, default=16, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
     parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between saving model weights")
-    parser.add_argument("--evaluation_interval", type=int, default=5, help="interval evaluations on validation set")
+    parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
+    parser.add_argument("--log_data_artifact", type=str, default=None , help="Logg the dataset as artifact")
+    parser.add_argument("--job_type", type=str, default='train-eval' , help="job name to uniquely identify the operation")
+    parser.add_argument("--name", type=str, default='run' , help="experiment name to uniquely identify the runs")
+
     opt = parser.parse_args()
     print(opt)
+    
+    '''
+    Create Artifacts and setup logging
+    '''
+    run = artifact_utils.init_new_run(opt.name,opt.job_type)
+
+    if opt.log_data_artifact != None:
+        artifact_utils.create_dataset_artifact('data/custom/images',run, opt.log_data_artifact)
+
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    print("Training on " , device)
     os.makedirs("output", exist_ok=True)
     os.makedirs("checkpoints", exist_ok=True)
 
@@ -104,7 +114,6 @@ if __name__ == "__main__":
     ]
     wandb.watch(model)
     for epoch in range(opt.epochs):
-        torch.cuda.empty_cache()
         model.train()
         start_time = time.time()
         for batch_i, (_, imgs, targets) in enumerate(dataloader):
@@ -150,7 +159,7 @@ if __name__ == "__main__":
 
             model.seen += imgs.size(0)
 
-        if (epoch+1) % opt.evaluation_interval == 0:
+        if (epoch) % opt.evaluation_interval == 0:
             print("\n---- Evaluating Model ----")
             # Evaluate the model on the validation set
             precision, recall, AP, f1, ap_class = evaluate(
@@ -186,5 +195,5 @@ if __name__ == "__main__":
             torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % epoch)
             model_ckpt_name = f"checkpoints/yolov3_ckpt_%d.pth" % epoch
 
-artifact_utils.create_model_artifact(model_ckpt_name,run)
+artifact_utils.create_model_artifact(model_ckpt_name,run,'model_yolov3ckpt')
 
