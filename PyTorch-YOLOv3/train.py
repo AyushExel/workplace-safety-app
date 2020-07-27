@@ -45,6 +45,9 @@ if __name__ == "__main__":
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
+    parser.add_argument("--use_gpu", default=True, help="Flag to Use GPU")
+    parser.add_argument("--optim", type = str, default='adam', help="optimizer for backprop. supports adam and sgd")
+    parser.add_argument("--lr", type = float, default=0.001, help="optimizer for backprop")
     parser.add_argument("--log_data_artifact", type=str, default=None , help="Logg the dataset as artifact")
     parser.add_argument("--job_type", type=str, default='train-eval' , help="job name to uniquely identify the operation")
     parser.add_argument("--name", type=str, default='run' , help="experiment name to uniquely identify the runs")
@@ -56,12 +59,16 @@ if __name__ == "__main__":
     Create Artifacts and setup logging
     '''
     run = artifact_utils.init_new_run(opt.name,opt.job_type)
-
+    #setup config dict. Useful for running sweeps
+    run.config['epochs'] = opt.epochs
+    run.config['model'] = opt.model_def
+    run.config['optim'] = opt.optim
+    run.config['lr'] = opt.lr
     if opt.log_data_artifact != None:
-        artifact_utils.create_dataset_artifact('data/custom/images',run, opt.log_data_artifact)
+        artifact_utils.create_dataset_artifact(run, opt.log_data_artifact)
 
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
     print("Training on " , device)
     os.makedirs("output", exist_ok=True)
     os.makedirs("checkpoints", exist_ok=True)
@@ -71,7 +78,7 @@ if __name__ == "__main__":
     train_path = data_config["train"]
     valid_path = data_config["valid"]
     class_names = load_classes(data_config["names"])
-
+    print(class_names)
     # Initiate model
     model = Darknet(opt.model_def).to(device)
     model.apply(weights_init_normal)
@@ -94,7 +101,9 @@ if __name__ == "__main__":
         collate_fn=dataset.collate_fn,
     )
 
-    optimizer = torch.optim.Adam(model.parameters(),0.001)
+    optimizer = torch.optim.Adam(model.parameters(),opt.lr)
+    if opt.optim == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(),opt.lr,momentum=0.9)
 
     metrics = [
         "grid_size",
@@ -104,7 +113,7 @@ if __name__ == "__main__":
         "w",
         "h",
         "conf",
-        "cls",
+        "cls", 
         "cls_acc",
         "recall50",
         "recall75",
