@@ -5,10 +5,12 @@ def init_new_run(name,job):
     run = wandb.init(project="artifact-workplace-safety",job_type=job,name=name)
     return run
 
-def create_dataset_artifact(path,run,name):
+def create_dataset_artifact(run,name):
     artifact = wandb.Artifact(name,type='dataset')
-    artifact.add_dir(path)
-
+    artifact.add_dir('data/custom/images')
+    artifact.add_dir('data/custom/labels')
+    artifact.add_file('data/custom/valid.txt')
+    artifact.add_file('data/custom/train.txt')
     run.use_artifact(artifact)
 
 
